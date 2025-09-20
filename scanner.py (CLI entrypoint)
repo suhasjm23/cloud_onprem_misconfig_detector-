@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""
+scanner.py
+CLI entrypoint for the Cloud & On-Prem Misconfiguration Detector
+"""
+
+import argparse
+import sys
+from aws_checks import AWSChecker
+from onprem_checks import OnPremChecker
+from utils import setup_logger
+
+logger = setup_logger()
+
+def main():
+    parser = argparse.ArgumentParser(description="Cloud & On-Prem Misconfiguration Detector")
+    parser.add_argument("--aws", action="store_true", help="Run AWS checks")
+    parser.add_argument("--onprem", action="store_true", help="Run On-Prem checks (SSH)")
+    parser.add_argument("--inventory", type=str, default="sample_inventory.yml", help="YAML file of on-prem hosts")
+    parser.add_argument("--remediate", action="store_true", help="Attempt remediation (use with caution)")
+    parser.add_argument("--force", action="store_true", help="Force remediation without prompt")
+    parser.add_argument("--region", type=str, default=None, help="AWS region (if omitted, uses default session regions)")
+    parser.add_argument("--profile", type=str, default=None, help="AWS profile to use (boto3)")
+    parser.add_argument("--output", type=str, default="report.txt", help="Output report file")
+    args = parser.parse_args()
+
+    if not (args.aws or args.onprem):
+        parser.print_help()
+        sys.exit(1)
+
+    report_lines = []
+
+    if args.aws:
+        logger.info("Starting AWS checks...")
+        aws_checker = AWSChecker(region=args.region, profile=args.profile, dry_run=not args.remediate)
+        aws_report = aws_checker.run_all(remediate=args.remediate, force=args.force)
+        report_lines.append("=== AWS Report ===")
+        report_lines.extend(aws_report)
+
+    if args.onprem:
+        logger.info("Starting On-Prem checks...")
+        onp = OnPremChecker(inventory_file=args.inventory, dry_run=not args.remediate)
+        onprem_report = onp.run_all(remediate=args.remediate, force=args.force)
+        report_lines.append("=== On-Prem Report ===")
+        report_lines.extend(onprem_report)
+
+    with open(args.output, "w") as f:
+        f.write("\n".join(report_lines))
+    logger.info(f"Report written to {args.output}")
+    print("\n".join(report_lines))
+
+if __name__ == "__main__":
+    main()
